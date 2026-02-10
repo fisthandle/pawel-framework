@@ -3,7 +3,7 @@
  * P1 Framework — PHP 8.4+ micro-framework
  * Single-file, zero dependencies
  *
- * Usage: require 'P1.php'; class_alias(P1\P1::class, 'P1');
+ * Usage: require 'P1.php'; class P1 extends \P1\Base {}
  */
 declare(strict_types=1);
 
@@ -1136,24 +1136,7 @@ namespace P1 {
         }
     }
 
-    class P1 {
-        public const ID = 'id';
-        public const SLUG = 'slug';
-        public const NAME = 'name';
-        public const EMAIL = 'email';
-        public const PHONE = 'phone';
-        public const PASSWORD = 'password';
-        public const ROLE = 'role';
-        public const STATUS = 'status';
-        public const TITLE = 'title';
-        public const DESCRIPTION = 'description';
-        public const PRICE = 'price';
-        public const DATE_ADDED = 'date_added';
-
-        public const ROLE_ADMIN = 'admin';
-        public const ROLE_MODERATOR = 'moderator';
-        public const ROLE_USER = 'user';
-
+    class Base {
         public static function app(): App {
             return App::instance();
         }
