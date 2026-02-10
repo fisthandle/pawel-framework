@@ -252,4 +252,65 @@ class ControllerTest extends TestCase {
         $response = $ctrl->test();
         $this->assertStringContainsString('/item/42', $response->body);
     }
+
+    public function testControllerSetAndGet(): void {
+        $ctrl = new class extends Controller {
+            public function setPublic(string $key, mixed $value): void {
+                $this->set($key, $value);
+            }
+
+            public function getPublic(string $key, mixed $default = null): mixed {
+                return $this->get($key, $default);
+            }
+        };
+
+        $ctrl->setPublic('key', 'value');
+        $this->assertSame('value', $ctrl->getPublic('key'));
+    }
+
+    public function testControllerGetDefault(): void {
+        $ctrl = new class extends Controller {
+            public function getPublic(string $key, mixed $default = null): mixed {
+                return $this->get($key, $default);
+            }
+        };
+
+        $this->assertNull($ctrl->getPublic('missing'));
+        $this->assertSame('default', $ctrl->getPublic('missing', 'default'));
+    }
+
+    public function testRenderMergesDataBagWithExplicitData(): void {
+        $ctrl = new class extends Controller {
+            public function setPublic(string $key, mixed $value): void {
+                $this->set($key, $value);
+            }
+
+            public function test(): Response {
+                return $this->render('data_bag.php', ['explicit' => 'val']);
+            }
+        };
+
+        $ctrl->request = new Request(method: 'GET', path: '/');
+        $ctrl->setPublic('from_bag', 'bag_value');
+
+        $response = $ctrl->test();
+        $this->assertStringContainsString('bag_value', $response->body);
+        $this->assertStringContainsString('val', $response->body);
+    }
+
+    public function testRenderAutoAddsFlashAndCsrf(): void {
+        $_SESSION['_flash_messages'] = [['type' => 'success', 'text' => 'done']];
+
+        $ctrl = new class extends Controller {
+            public function test(): Response {
+                return $this->render('globals_test.php');
+            }
+        };
+
+        $ctrl->request = new Request(method: 'GET', path: '/');
+        $response = $ctrl->test();
+
+        $this->assertStringContainsString('csrf_token', $response->body);
+        $this->assertStringContainsString('flash-success-done', $response->body);
+    }
 }

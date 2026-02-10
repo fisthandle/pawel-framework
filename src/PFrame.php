@@ -239,6 +239,33 @@ namespace PFrame {
             }
             echo $this->body;
         }
+
+        public function sendAndExit(): never {
+            $this->send();
+            exit;
+        }
+    }
+
+    class SseResponse extends Response {
+        private \Closure $callback;
+
+        public function __construct(\Closure $callback) {
+            parent::__construct('', 200, [
+                'Content-Type' => 'text/event-stream',
+                'Cache-Control' => 'no-cache',
+                'Connection' => 'keep-alive',
+                'X-Accel-Buffering' => 'no',
+            ]);
+            $this->callback = $callback;
+        }
+
+        public function send(): void {
+            http_response_code($this->status);
+            foreach ($this->headers as $name => $value) {
+                header($name . ': ' . $value);
+            }
+            ($this->callback)();
+        }
     }
 
     class App {
@@ -755,6 +782,7 @@ namespace PFrame {
         /** @var array<int, array{sql: string, time: float}> */
         private array $log = [];
         private bool $logQueries;
+        private int $lastRowCount = 0;
 
         public function __construct(array $config) {
             $dsn = $config['dsn'] ?? sprintf(
@@ -793,6 +821,7 @@ namespace PFrame {
             $norm = $this->norm($params);
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute($norm);
+            $this->lastRowCount = $stmt->rowCount();
             if ($this->logQueries) {
                 $this->log[] = ['sql' => $this->interpolate($sql, $norm), 'time' => microtime(true) - $t];
             }
@@ -832,7 +861,9 @@ namespace PFrame {
         public function exec(string $sql, array|string|null $params = null): int|array {
             $stmt = $this->run($sql, $params);
             if ($this->isSelectQuery($sql)) {
-                return $stmt->fetchAll();
+                $rows = $stmt->fetchAll();
+                $this->lastRowCount = count($rows);
+                return $rows;
             }
             return $stmt->rowCount();
         }
@@ -872,8 +903,27 @@ namespace PFrame {
             return $this->pdo->rollBack();
         }
 
+        public function trans(): bool {
+            return $this->pdo->inTransaction();
+        }
+
+        public function count(): int {
+            return $this->lastRowCount;
+        }
+
         public function placeholders(array $items): string {
             return implode(', ', array_fill(0, count($items), '?'));
+        }
+
+        public function log(): string {
+            if ($this->log === []) {
+                return '';
+            }
+            $lines = [];
+            foreach ($this->log as $entry) {
+                $lines[] = sprintf('(%.2fms) %s', $entry['time'] * 1000, $entry['sql']);
+            }
+            return implode("\n", $lines);
         }
 
         private function isSelectQuery(string $sql): bool {
@@ -1304,18 +1354,29 @@ namespace PFrame {
 
     abstract class Controller {
         public Request $request;
+        protected array $data = [];
+
+        protected function set(string $key, mixed $value): static {
+            $this->data[$key] = $value;
+            return $this;
+        }
+
+        protected function get(string $key, mixed $default = null): mixed {
+            return $this->data[$key] ?? $default;
+        }
 
         protected function render(string $template, array $data = []): Response {
             $app = App::instance();
             $viewPath = (string) $app->config('view_path', 'templates');
             $view = new View($viewPath);
 
-            $data['flash'] = (new Flash())->get();
-            $data['csrf_token'] = Csrf::token();
-            $data['csrf_input'] = Csrf::hiddenInput();
-            $data['url'] = static fn(string $name, array $params = []): string => $app->url($name, $params);
+            $merged = array_merge($this->data, $data);
+            $merged['flash'] = (new Flash())->get();
+            $merged['csrf_token'] = Csrf::token();
+            $merged['csrf_input'] = Csrf::hiddenInput();
+            $merged['url'] = static fn(string $name, array $params = []): string => $app->url($name, $params);
 
-            return Response::html($view->render($template, $data));
+            return Response::html($view->render($template, $merged));
         }
 
         protected function json(mixed $data, int $status = 200): Response {

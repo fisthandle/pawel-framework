@@ -53,4 +53,10 @@ class ResponseTest extends TestCase {
         $r = Response::redirect('/login');
         $this->assertSame('/login', $r->headers['Location']);
     }
+
+    public function testSendAndExitMethodContract(): void {
+        $method = new \ReflectionMethod(Response::class, 'sendAndExit');
+        $this->assertTrue($method->hasReturnType());
+        $this->assertSame('never', (string) $method->getReturnType());
+    }
 }

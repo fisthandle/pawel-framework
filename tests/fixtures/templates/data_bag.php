@@ -1,0 +1,2 @@
+<div><?= h($from_bag ?? '') ?></div>
+<div><?= h($explicit ?? '') ?></div>

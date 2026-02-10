@@ -87,6 +87,35 @@ class DbTest extends TestCase {
         $this->assertEquals(3, $this->db->var('SELECT COUNT(*) FROM users'));
     }
 
+    public function testTransReturnsFalseOutsideTransaction(): void {
+        $this->assertFalse($this->db->trans());
+    }
+
+    public function testTransReturnsTrueInsideTransaction(): void {
+        $this->db->begin();
+        $this->assertTrue($this->db->trans());
+        $this->db->rollback();
+        $this->assertFalse($this->db->trans());
+    }
+
+    public function testCountReturnsAffectedRowsAfterInsert(): void {
+        $this->db->exec('INSERT INTO users (name, email) VALUES (?, ?)', ['A', 'a@x.com']);
+        $this->assertSame(1, $this->db->count());
+
+        $this->db->exec('INSERT INTO users (name, email) VALUES (?, ?), (?, ?)', ['B', 'b@x.com', 'C', 'c@x.com']);
+        $this->assertSame(2, $this->db->count());
+    }
+
+    public function testCountAfterUpdate(): void {
+        $this->db->exec('UPDATE users SET name = ? WHERE name = ?', ['Zed', 'Joe']);
+        $this->assertSame(1, $this->db->count());
+    }
+
+    public function testCountAfterSelect(): void {
+        $this->db->exec('SELECT * FROM users');
+        $this->assertSame(2, $this->db->count());
+    }
+
     public function testPlaceholders(): void {
         $this->assertSame('?, ?, ?', $this->db->placeholders([1, 2, 3]));
     }
@@ -117,5 +146,20 @@ class DbTest extends TestCase {
         $this->assertIsFloat($log[0]['time']);
         $this->assertSame("INSERT INTO t (id, name) VALUES (1, 'Joe')", $log[1]['sql']);
         $this->assertStringContainsString('SELECT COUNT', $log[2]['sql']);
+    }
+
+    public function testFormattedLogReturnsEmptyStringWhenNoQueries(): void {
+        $db = new Db(['dsn' => 'sqlite::memory:', 'log_queries' => true]);
+        $this->assertSame('', $db->log());
+    }
+
+    public function testFormattedLogReturnsExpectedFormat(): void {
+        $db = new Db(['dsn' => 'sqlite::memory:', 'log_queries' => true]);
+        $db->exec('SELECT 1');
+
+        $log = $db->log();
+        $this->assertIsString($log);
+        $this->assertStringContainsString('SELECT 1', $log);
+        $this->assertMatchesRegularExpression('/\(\d+\.\d+ms\)/', $log);
     }
 }
