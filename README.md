@@ -2,7 +2,7 @@
 
 Single-file PHP 8.4+ micro-framework. Zero dependencies, copy-paste deployment.
 
-One file. 14 classes. ~1650 LOC. Everything you need, nothing you don't.
+One file. 15 classes. ~1800 LOC. Everything you need, nothing you don't.
 
 ## Quick Start
 
@@ -130,10 +130,11 @@ Layout:
 |-------|---------|
 | `App` | Router, config, middleware pipeline, error handling |
 | `Request` | HTTP request with proxy support |
-| `Response` | HTTP response (html, json, redirect) |
-| `Db` | PDO wrapper with prepared statements |
+| `Response` | HTTP response (html, json, redirect, send-and-exit helper) |
+| `SseResponse` | Streaming HTTP response for Server-Sent Events |
+| `Db` | PDO wrapper with prepared statements, tx state and formatted query log |
 | `View` | Template engine with layouts and partials |
-| `Controller` | Base controller with auth, CSRF, pagination helpers |
+| `Controller` | Base controller with auth, CSRF, pagination and view data bag helpers |
 | `Session` | Database-backed session handler with advisory locks |
 | `Csrf` | CSRF token + per-action nonce generation |
 | `Flash` | Flash messages |
@@ -164,6 +165,11 @@ P1::exec('UPDATE users SET name = ? WHERE id = ?', [$name, $id]);
 P1::db()->begin();
 // ...
 P1::db()->commit(); // or ->rollback()
+
+// Compatibility helpers used by migration targets
+$inTx = P1::db()->trans();  // bool
+$count = P1::db()->count(); // last affected/returned row count
+$sqlLog = P1::db()->log();  // "(X.XXms) SQL" lines
 ```
 
 DB sessions require the `sessions` table -- see `db/sessions.sql`.
@@ -187,6 +193,14 @@ $app->addSecurityHeaders(); // CSP, XFO, XCTO, Referrer-Policy, Permissions-Poli
 Built-in middleware:
 - `\PFrame\Middleware::auth()` -- guest -> flash warning + redirect to `login` route
 - `\PFrame\Middleware::csrf()` -- validates token from `csrf_token` field or `X-Csrf-Token` header
+
+## Migration Compatibility
+
+For F3-to-PFrame migration scenarios, the framework now includes:
+- `Db::trans()`, `Db::count()`, `Db::log()`
+- `Controller` view data bag (`set()` / `get()`) auto-merged in `render()`
+- `SseResponse` for SSE endpoints
+- `Response::sendAndExit()` for legacy flow compatibility
 
 ## Requirements
 

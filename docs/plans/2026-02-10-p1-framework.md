@@ -1,5 +1,8 @@
 # P1 Framework — Implementation Plan
 
+> Status update (February 10, 2026): projekt działa już pod nazwą `PFrame` (`src/PFrame.php`), a kluczowe dodatki kompatybilności migracyjnej zostały wdrożone (`Db::trans/count/log`, `Controller` data bag, `SseResponse`, `Response::sendAndExit`).
+> Ten dokument pozostaje planem historycznym z etapu nazewnictwa `P1`.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Single-file PHP 8.4+ micro-framework (zero deps) extracting proven patterns from 4 F3 projects (ogloszenia, pat, prowadzacy, brat).

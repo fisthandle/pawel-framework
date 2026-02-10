@@ -4,7 +4,7 @@ Single-file PHP 8.4+ micro-framework. Zero dependencies, copy-paste deployment.
 
 ## Architektura
 
-- **Jeden plik:** `src/PFrame.php` — cały framework (~1650 LOC)
+- **Jeden plik:** `src/PFrame.php` — cały framework (~1800 LOC)
 - **Namespace:** `PFrame` (klasy) + globalne helpery w `namespace {}`
 - **Brak mail:** do maili używamy PHPMailer (zewnętrznie)
 - **Fasada:** `PFrame\Base` — projekty definiują `class P1 extends \PFrame\Base` z project-specific stałymi
@@ -18,7 +18,7 @@ Single-file PHP 8.4+ micro-framework. Zero dependencies, copy-paste deployment.
 
 ## Klasy (PFrame namespace)
 
-HttpException, Request, Response, App, Db, View, Session, Csrf, Flash, Controller, Log, Validator, Cache, Base (fasada)
+HttpException, Request, Response, SseResponse, App, Db, View, Session, Csrf, Flash, Controller, Log, Validator, Cache, Base (fasada)
 
 ## Globalne helpery
 
@@ -38,6 +38,16 @@ vendor/bin/phpunit tests/Unit   # tylko unit
 - `db/sessions.sql` — schemat sesji (MySQL)
 - Session handler wspiera SQLite (INSERT OR REPLACE) i MySQL (ON DUPLICATE KEY)
 - Logowanie zapytań SQL jest opcjonalne: ustaw `db.log_queries` w configu na `true`
+- `Db::trans()` zwraca status aktywnej transakcji
+- `Db::count()` zwraca row count ostatniego zapytania (także dla SELECT)
+- `Db::log()` zwraca log SQL jako formatowane linie `(X.XXms) SQL`
+
+## Kontrolery i Response
+
+- `Controller` ma data bag `protected array $data` + `set()`/`get()`
+- `Controller::render()` łączy data bag z danymi explicit oraz globalami (`flash`, `csrf`, `url`)
+- `Response::sendAndExit()` wspiera legacy flow typu send+exit
+- `SseResponse` obsługuje Server-Sent Events (`text/event-stream`)
 
 ## Bezpieczeństwo i obsługa błędów
 
