@@ -32,15 +32,15 @@ class HelpersTest extends TestCase {
     }
 
     public function testMbStrlenS(): void {
-        $this->assertSame(0, mb_strlenS(null));
-        $this->assertSame(5, mb_strlenS('hello'));
-        $this->assertSame(4, mb_strlenS('żółw'));
+        $this->assertSame(0, strlenS(null));
+        $this->assertSame(5, strlenS('hello'));
+        $this->assertSame(4, strlenS('żółw'));
     }
 
     public function testMbSubstrS(): void {
-        $this->assertSame('llo', mb_substrS('hello', 2));
-        $this->assertSame('żó', mb_substrS('żółw', 0, 2));
-        $this->assertSame('', mb_substrS(null, 0));
+        $this->assertSame('llo', substrS('hello', 2));
+        $this->assertSame('żó', substrS('żółw', 0, 2));
+        $this->assertSame('', substrS(null, 0));
     }
 
     public function testTrimS(): void {

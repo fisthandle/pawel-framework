@@ -1204,11 +1204,11 @@ namespace {
         return $array[$key] ?? $default;
     }
 
-    function mb_strlenS(?string $s): int {
+    function strlenS(?string $s): int {
         return mb_strlen($s ?? '');
     }
 
-    function mb_substrS(?string $s, int $start, ?int $length = null): string {
+    function substrS(?string $s, int $start, ?int $length = null): string {
         return mb_substr($s ?? '', $start, $length);
     }
 
