@@ -503,9 +503,14 @@ namespace P1 {
             return $params;
         }
 
-        public function exec(string $sql, array|string|null $params = null): int|array {
+        private function run(string $sql, array|string|null $params): \PDOStatement {
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute($this->norm($params));
+            return $stmt;
+        }
+
+        public function exec(string $sql, array|string|null $params = null): int|array {
+            $stmt = $this->run($sql, $params);
             if (stripos(ltrim($sql), 'SELECT') === 0) {
                 return $stmt->fetchAll();
             }
@@ -513,34 +518,25 @@ namespace P1 {
         }
 
         public function var(string $sql, array|string|null $params = null): mixed {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($this->norm($params));
-            $row = $stmt->fetch(\PDO::FETCH_NUM);
+            $row = $this->run($sql, $params)->fetch(\PDO::FETCH_NUM);
             return $row ? $row[0] : null;
         }
 
         public function row(string $sql, array|string|null $params = null): ?array {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($this->norm($params));
-            $row = $stmt->fetch();
+            $row = $this->run($sql, $params)->fetch();
             return $row ?: null;
         }
 
         public function results(string $sql, array|string|null $params = null): array {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($this->norm($params));
-            return $stmt->fetchAll();
+            return $this->run($sql, $params)->fetchAll();
         }
 
         public function col(string $sql, array|string|null $params = null): array {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($this->norm($params));
-            return $stmt->fetchAll(\PDO::FETCH_COLUMN);
+            return $this->run($sql, $params)->fetchAll(\PDO::FETCH_COLUMN);
         }
 
         public function insertGetId(string $sql, array|string|null $params = null): int {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($this->norm($params));
+            $this->run($sql, $params);
             return (int) $this->pdo->lastInsertId();
         }
 
@@ -594,8 +590,10 @@ namespace P1 {
 
         private function renderFile(string $template, array $data): string {
             $filePath = rtrim($this->basePath, '/') . '/' . ltrim($template, '/');
-            if (!is_file($filePath)) {
-                throw new \RuntimeException('Template not found: ' . $filePath);
+            $realBase = realpath($this->basePath);
+            $realFile = realpath($filePath);
+            if ($realFile === false || $realBase === false || !str_starts_with($realFile, $realBase)) {
+                throw new \RuntimeException('Template not found: ' . $template);
             }
 
             $view = $this;
