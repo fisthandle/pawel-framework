@@ -184,6 +184,24 @@ class AppTest extends TestCase {
         $this->assertSame('getting-started/intro', $response->body);
     }
 
+    public function testStaticRouteMatchesTrailingSlash(): void {
+        $app = new App();
+        $app->get('/hello', HelloStub::class, 'index');
+
+        $response = $app->handle(new Request(method: 'GET', path: '/hello/'));
+        $this->assertSame(200, $response->status);
+        $this->assertSame('hello world', $response->body);
+    }
+
+    public function testRouteOrderPreservedWhenDynamicPrecedesStatic(): void {
+        $app = new App();
+        $app->get('/{slug}', PriorityCtrl::class, 'dynamic');
+        $app->get('/kontakt', PriorityCtrl::class, 'static');
+
+        $response = $app->handle(new Request(method: 'GET', path: '/kontakt'));
+        $this->assertSame('dynamic:kontakt', $response->body);
+    }
+
     public function testMethodNotAllowedReturns405(): void {
         $app = new App();
         $app->get('/ping', HelloStub::class, 'index');
@@ -322,6 +340,18 @@ class WildcardCtrl {
 
     public function show(): Response {
         return new Response($this->request->param('*', ''));
+    }
+}
+
+class PriorityCtrl {
+    public Request $request;
+
+    public function dynamic(): Response {
+        return new Response('dynamic:' . (string) $this->request->param('slug', ''));
+    }
+
+    public function static(): Response {
+        return new Response('static');
     }
 }
 

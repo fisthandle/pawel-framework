@@ -274,8 +274,14 @@ namespace PFrame {
 
         private array $configData = [];
 
-        /** @var array<int, array{methods: string[], pattern: string, regex: string, paramNames: string[], controller: string, action: string, middleware: array, name: ?string, ajax: bool}> */
+        /** @var array<int, array{methods: string[], pattern: string, regex: string, paramNames: string[], controller: string, action: string, middleware: array, name: ?string, ajax: bool, static: bool}> */
         private array $routes = [];
+
+        /** @var array<string, array<int, int>> */
+        private array $staticRouteIndexesByPath = [];
+
+        /** @var array<int, int> */
+        private array $dynamicRouteIndexes = [];
 
         /** @var array<string, int> */
         private array $namedRoutes = [];
@@ -433,6 +439,7 @@ namespace PFrame {
                 }
                 $regex .= preg_quote($part, '#');
             }
+            $isStatic = $paramNames === [];
 
             $index = count($this->routes);
             $this->routes[] = [
@@ -445,7 +452,14 @@ namespace PFrame {
                 'middleware' => $middleware,
                 'name' => $name,
                 'ajax' => $ajax,
+                'static' => $isStatic,
             ];
+            if ($isStatic) {
+                $pathKey = $this->routePathKey($pattern);
+                $this->staticRouteIndexesByPath[$pathKey][] = $index;
+            } else {
+                $this->dynamicRouteIndexes[] = $index;
+            }
             if ($name !== null) {
                 $this->namedRoutes[$name] = $index;
             }
@@ -534,31 +548,42 @@ namespace PFrame {
         private function matchRoute(string $method, string $path, bool $isAjax): ?array {
             $method = strtoupper($method);
             $allowed = [];
-            foreach ($this->routes as $route) {
-                if (!preg_match($route['regex'], $path, $matches)) {
-                    continue;
-                }
-                if ($route['ajax'] && !$isAjax) {
-                    continue;
-                }
-                if (!in_array($method, $route['methods'], true)) {
-                    foreach ($route['methods'] as $allowedMethod) {
-                        $allowed[$allowedMethod] = true;
+            $pathKey = $this->routePathKey($path);
+            $staticIndexes = $this->staticRouteIndexesByPath[$pathKey] ?? [];
+
+            if ($staticIndexes === []) {
+                foreach ($this->dynamicRouteIndexes as $routeIndex) {
+                    $match = $this->matchRouteCandidate($this->routes[$routeIndex], $method, $path, $isAjax, $allowed);
+                    if ($match !== null) {
+                        return $match;
                     }
-                    continue;
                 }
+            } else {
+                $dynamicPos = 0;
+                $staticPos = 0;
+                $dynamicCount = count($this->dynamicRouteIndexes);
+                $staticCount = count($staticIndexes);
 
-                $params = [];
-                foreach ($route['paramNames'] as $i => $name) {
-                    $params[$name] = $matches[$i + 1] ?? '';
+                while ($dynamicPos < $dynamicCount || $staticPos < $staticCount) {
+                    if (
+                        $staticPos >= $staticCount
+                        || (
+                            $dynamicPos < $dynamicCount
+                            && $this->dynamicRouteIndexes[$dynamicPos] < $staticIndexes[$staticPos]
+                        )
+                    ) {
+                        $route = $this->routes[$this->dynamicRouteIndexes[$dynamicPos]];
+                        $dynamicPos++;
+                    } else {
+                        $route = $this->routes[$staticIndexes[$staticPos]];
+                        $staticPos++;
+                    }
+
+                    $match = $this->matchRouteCandidate($route, $method, $path, $isAjax, $allowed);
+                    if ($match !== null) {
+                        return $match;
+                    }
                 }
-
-                return [
-                    'controller' => $route['controller'],
-                    'action' => $route['action'],
-                    'params' => $params,
-                    'middleware' => $route['middleware'],
-                ];
             }
 
             if ($allowed !== []) {
@@ -566,6 +591,42 @@ namespace PFrame {
             }
 
             return null;
+        }
+
+        /**
+         * @param array{methods: string[], pattern: string, regex: string, paramNames: string[], controller: string, action: string, middleware: array, name: ?string, ajax: bool, static: bool} $route
+         * @param array<string, bool> $allowed
+         * @return array{controller: string, action: string, params: array<string, string>, middleware: array}|null
+         */
+        private function matchRouteCandidate(array $route, string $method, string $path, bool $isAjax, array &$allowed): ?array {
+            if (!preg_match($route['regex'], $path, $matches)) {
+                return null;
+            }
+            if ($route['ajax'] && !$isAjax) {
+                return null;
+            }
+            if (!in_array($method, $route['methods'], true)) {
+                foreach ($route['methods'] as $allowedMethod) {
+                    $allowed[$allowedMethod] = true;
+                }
+                return null;
+            }
+
+            $params = [];
+            foreach ($route['paramNames'] as $i => $name) {
+                $params[$name] = $matches[$i + 1] ?? '';
+            }
+
+            return [
+                'controller' => $route['controller'],
+                'action' => $route['action'],
+                'params' => $params,
+                'middleware' => $route['middleware'],
+            ];
+        }
+
+        private function routePathKey(string $path): string {
+            return $path === '/' ? '/' : rtrim($path, '/');
         }
 
         private function invokeController(Request $request, string $controllerClass, string $action): Response {
