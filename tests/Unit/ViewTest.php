@@ -1,9 +1,9 @@
 <?php
 declare(strict_types=1);
 
-namespace P1\Tests\Unit;
+namespace PFrame\Tests\Unit;
 
-use P1\View;
+use PFrame\View;
 use PHPUnit\Framework\TestCase;
 
 class ViewTest extends TestCase {

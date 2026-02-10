@@ -1,12 +1,12 @@
 <?php
 declare(strict_types=1);
 
-namespace P1\Tests\Unit;
+namespace PFrame\Tests\Unit;
 
-use P1\App;
-use P1\HttpException;
-use P1\Request;
-use P1\Response;
+use PFrame\App;
+use PFrame\HttpException;
+use PFrame\Request;
+use PFrame\Response;
 use PHPUnit\Framework\TestCase;
 
 class AppTest extends TestCase {

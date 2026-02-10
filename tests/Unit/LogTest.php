@@ -1,9 +1,9 @@
 <?php
 declare(strict_types=1);
 
-namespace P1\Tests\Unit;
+namespace PFrame\Tests\Unit;
 
-use P1\Log;
+use PFrame\Log;
 use PHPUnit\Framework\TestCase;
 
 class LogTest extends TestCase {

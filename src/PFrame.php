@@ -1,13 +1,13 @@
 <?php
 /**
- * P1 Framework — PHP 8.4+ micro-framework
+ * PFrame — PHP 8.4+ micro-framework
  * Single-file, zero dependencies
  *
- * Usage: require 'P1.php'; class P1 extends \P1\Base {}
+ * Usage: require 'PFrame.php'; class P1 extends \PFrame\Base {}
  */
 declare(strict_types=1);
 
-namespace P1 {
+namespace PFrame {
 
     class HttpException extends \RuntimeException {
         public function __construct(

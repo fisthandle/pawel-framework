@@ -1,5 +1,5 @@
 {
-    "name": "p1/framework",
+    "name": "pframe/framework",
     "description": "Single-file PHP 8.4+ micro-framework",
     "type": "library",
     "license": "MIT",
@@ -11,12 +11,12 @@
     },
     "autoload": {
         "files": [
-            "src/P1.php"
+            "src/PFrame.php"
         ]
     },
     "autoload-dev": {
         "psr-4": {
-            "P1\\Tests\\": "tests/"
+            "PFrame\\Tests\\": "tests/"
         }
     }
 }

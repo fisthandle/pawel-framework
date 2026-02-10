@@ -1,9 +1,9 @@
 <?php
 declare(strict_types=1);
 
-namespace P1\Tests\Unit;
+namespace PFrame\Tests\Unit;
 
-use P1\Cache;
+use PFrame\Cache;
 use PHPUnit\Framework\TestCase;
 
 class CacheTest extends TestCase {

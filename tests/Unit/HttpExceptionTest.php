@@ -1,9 +1,9 @@
 <?php
 declare(strict_types=1);
 
-namespace P1\Tests\Unit;
+namespace PFrame\Tests\Unit;
 
-use P1\HttpException;
+use PFrame\HttpException;
 use PHPUnit\Framework\TestCase;
 
 class HttpExceptionTest extends TestCase {

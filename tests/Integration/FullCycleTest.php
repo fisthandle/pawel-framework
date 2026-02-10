@@ -1,12 +1,12 @@
 <?php
 declare(strict_types=1);
 
-namespace P1\Tests\Integration;
+namespace PFrame\Tests\Integration;
 
-use P1\App;
-use P1\Controller;
-use P1\Request;
-use P1\Response;
+use PFrame\App;
+use PFrame\Controller;
+use PFrame\Request;
+use PFrame\Response;
 use PHPUnit\Framework\TestCase;
 
 class FullCycleTest extends TestCase {
@@ -40,13 +40,13 @@ class FullCycleTest extends TestCase {
         $app = new App();
         $app->addMiddleware(function (Request $r, callable $next): Response {
             $resp = $next($r);
-            $resp->headers['X-Powered-By'] = 'P1';
+            $resp->headers['X-Powered-By'] = 'PFrame';
             return $resp;
         });
         $app->get('/', TestHomeCtrl::class, 'index');
 
         $response = $app->handle(new Request(method: 'GET', path: '/'));
-        $this->assertSame('P1', $response->headers['X-Powered-By']);
+        $this->assertSame('PFrame', $response->headers['X-Powered-By']);
     }
 
     public function testBeforeRouteGuard(): void {

@@ -1,9 +1,9 @@
 <?php
 declare(strict_types=1);
 
-namespace P1\Tests\Unit;
+namespace PFrame\Tests\Unit;
 
-use P1\Flash;
+use PFrame\Flash;
 use PHPUnit\Framework\TestCase;
 
 class FlashTest extends TestCase {

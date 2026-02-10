@@ -1,4 +1,4 @@
-# P1 Framework
+# PFrame
 
 Single-file PHP 8.4+ micro-framework. Zero dependencies, copy-paste deployment.
 
@@ -9,7 +9,7 @@ One file. 14 classes. ~1650 LOC. Everything you need, nothing you don't.
 ```
 myproject/
 ├── public/index.php
-├── lib/P1.php           # just copy this file
+├── lib/PFrame.php          # just copy this file
 ├── config/app.php
 ├── controllers/
 ├── templates/
@@ -21,9 +21,9 @@ myproject/
 <?php
 // public/index.php
 declare(strict_types=1);
-require dirname(__DIR__) . '/lib/P1.php';
+require dirname(__DIR__) . '/lib/PFrame.php';
 
-class P1 extends \P1\Base {}
+class P1 extends \PFrame\Base {}
 
 $app = P1::app();
 $app->loadConfig(dirname(__DIR__) . '/config/app.php');
@@ -58,8 +58,8 @@ return [
 <?php
 declare(strict_types=1);
 
-class HomeController extends \P1\Controller {
-    public function index(): \P1\Response {
+class HomeController extends \PFrame\Controller {
+    public function index(): \PFrame\Response {
         $users = P1::results('SELECT * FROM users ORDER BY id DESC');
         $pag = $this->paginate(P1::var('SELECT COUNT(*) FROM users'));
 
@@ -69,10 +69,10 @@ class HomeController extends \P1\Controller {
         ]);
     }
 
-    public function create(): \P1\Response {
+    public function create(): \PFrame\Response {
         $this->validateCsrf();
         $data = $this->postData(['name', 'email']);
-        $errors = \P1\Validator::validate([
+        $errors = \PFrame\Validator::validate([
             'name' => 'required',
             'email' => ['required', 'email'],
         ], $data);
@@ -144,7 +144,7 @@ Layout:
 ## Database
 
 ```php
-// Via facade
+// Via project facade (class P1 extends \PFrame\Base)
 $users = P1::results('SELECT * FROM users WHERE active = ?', [1]);
 $count = P1::var('SELECT COUNT(*) FROM users');
 $user  = P1::row('SELECT * FROM users WHERE id = ?', [$id]);

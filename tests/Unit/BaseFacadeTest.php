@@ -1,14 +1,14 @@
 <?php
 declare(strict_types=1);
 
-namespace P1\Tests\Unit;
+namespace PFrame\Tests\Unit;
 
-use P1\App;
-use P1\Db;
-use P1\Base;
+use PFrame\App;
+use PFrame\Db;
+use PFrame\Base;
 use PHPUnit\Framework\TestCase;
 
-class P1FacadeTest extends TestCase {
+class BaseFacadeTest extends TestCase {
     public function testAppReturnsInstance(): void {
         $app = new App();
         $this->assertSame($app, Base::app());
@@ -43,7 +43,7 @@ class P1FacadeTest extends TestCase {
         $this->assertSame('a', Base::row('SELECT * FROM items WHERE id = 1')['name']);
         $this->assertSame(['a', 'b'], Base::col('SELECT name FROM items ORDER BY id'));
         $this->assertCount(2, Base::results('SELECT * FROM items'));
-        $this->assertInstanceOf(\P1\Flash::class, Base::flash());
+        $this->assertInstanceOf(\PFrame\Flash::class, Base::flash());
     }
 
     public function testUrlShortcut(): void {
@@ -55,7 +55,7 @@ class P1FacadeTest extends TestCase {
 }
 
 class FacadeStubCtrl {
-    public function index(): \P1\Response {
-        return new \P1\Response('ok');
+    public function index(): \PFrame\Response {
+        return new \PFrame\Response('ok');
     }
 }
