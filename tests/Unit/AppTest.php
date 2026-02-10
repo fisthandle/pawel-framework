@@ -1,0 +1,236 @@
+<?php
+declare(strict_types=1);
+
+namespace P1\Tests\Unit;
+
+use P1\App;
+use P1\HttpException;
+use P1\Request;
+use P1\Response;
+use PHPUnit\Framework\TestCase;
+
+class AppTest extends TestCase {
+    public function testRouteRegistration(): void {
+        $app = new App();
+        $app->get('/hello', HelloStub::class, 'index');
+
+        $response = $app->handle(new Request(method: 'GET', path: '/hello'));
+        $this->assertSame(200, $response->status);
+        $this->assertSame('hello world', $response->body);
+    }
+
+    public function testRouteParams(): void {
+        $app = new App();
+        $app->get('/greet/{name}', HelloStub::class, 'greet');
+
+        $response = $app->handle(new Request(method: 'GET', path: '/greet/Joe'));
+        $this->assertSame('Hello Joe', $response->body);
+    }
+
+    public function test404(): void {
+        $app = new App();
+        $response = $app->handle(new Request(method: 'GET', path: '/nope'));
+        $this->assertSame(404, $response->status);
+    }
+
+    public function testGlobalMiddleware(): void {
+        $app = new App();
+        $app->addMiddleware(function (Request $req, callable $next): Response {
+            $response = $next($req);
+            $response->headers['X-Test'] = 'passed';
+            return $response;
+        });
+        $app->get('/hello', HelloStub::class, 'index');
+
+        $response = $app->handle(new Request(method: 'GET', path: '/hello'));
+        $this->assertSame('passed', $response->headers['X-Test'] ?? null);
+    }
+
+    public function testRouteMiddleware(): void {
+        $app = new App();
+        $authMw = function (Request $req, callable $next): Response {
+            return new Response('blocked', 403);
+        };
+        $app->get('/secret', HelloStub::class, 'index', mw: [$authMw]);
+
+        $response = $app->handle(new Request(method: 'GET', path: '/secret'));
+        $this->assertSame(403, $response->status);
+        $this->assertSame('blocked', $response->body);
+    }
+
+    public function testPostRoute(): void {
+        $app = new App();
+        $app->post('/submit', HelloStub::class, 'submit');
+
+        $response = $app->handle(new Request(method: 'POST', path: '/submit', post: ['val' => 'ok']));
+        $this->assertSame('submitted', $response->body);
+    }
+
+    public function testNamedRouteUrl(): void {
+        $app = new App();
+        $app->get('/o/{slug}', HelloStub::class, 'index', name: 'ad.show');
+        $this->assertSame('/o/test', $app->url('ad.show', ['slug' => 'test']));
+        $this->assertSame('/o/a%20b', $app->url('ad.show', ['slug' => 'a b']));
+    }
+
+    public function testAjaxRoute(): void {
+        $app = new App();
+        $app->post('/api/vote', HelloStub::class, 'submit', ajax: true);
+
+        $response = $app->handle(new Request(method: 'POST', path: '/api/vote'));
+        $this->assertSame(404, $response->status);
+
+        $response = $app->handle(new Request(
+            method: 'POST',
+            path: '/api/vote',
+            headers: ['X-Requested-With' => 'XMLHttpRequest'],
+        ));
+        $this->assertSame(200, $response->status);
+    }
+
+    public function testConfig(): void {
+        $app = new App();
+        $app->loadConfig(__DIR__ . '/../fixtures/config/app.php');
+        $this->assertSame('TestApp', $app->config('app_name'));
+        $this->assertSame('localhost', $app->config('db.host'));
+        $this->assertNull($app->config('nonexistent'));
+        $this->assertSame('fallback', $app->config('nonexistent', 'fallback'));
+    }
+
+    public function testSetConfigDotNotation(): void {
+        $app = new App();
+        $app->setConfig('db.host', '127.0.0.1');
+        $app->setConfig('db.port', 3306);
+        $this->assertSame('127.0.0.1', $app->config('db.host'));
+        $this->assertSame(3306, $app->config('db.port'));
+    }
+
+    public function testConfigLoadErrors(): void {
+        $this->expectException(\RuntimeException::class);
+        (new App())->loadConfig(__DIR__ . '/../fixtures/config/missing.php');
+    }
+
+    public function testUrlMissingRouteThrows(): void {
+        $this->expectException(\RuntimeException::class);
+        (new App())->url('missing.route');
+    }
+
+    public function testRouteWildcardMatch(): void {
+        $app = new App();
+        $app->route('GET', '/assets/*', WildcardCtrl::class, 'show');
+
+        $response = $app->handle(new Request(method: 'GET', path: '/assets/css/main.css'));
+        $this->assertSame(200, $response->status);
+    }
+
+    public function testHttpExceptionMessageDependsOnDebug(): void {
+        $app = new App();
+        $app->setConfig('debug', 0);
+        $app->get('/deny', ThrowHttpCtrl::class, 'run');
+
+        $response = $app->handle(new Request(method: 'GET', path: '/deny'));
+        $this->assertSame(403, $response->status);
+        $this->assertSame('Brak dostępu', $response->body);
+
+        $app = new App();
+        $app->setConfig('debug', 3);
+        $app->get('/deny', ThrowHttpCtrl::class, 'run');
+        $response = $app->handle(new Request(method: 'GET', path: '/deny'));
+        $this->assertSame('blocked by test', $response->body);
+    }
+
+    public function testRuntimeExceptionHandled(): void {
+        $app = new App();
+        $app->setConfig('debug', 0);
+        $app->get('/boom', ThrowRuntimeCtrl::class, 'run');
+
+        $response = $app->handle(new Request(method: 'GET', path: '/boom'));
+        $this->assertSame(500, $response->status);
+        $this->assertSame('Wystąpił błąd serwera.', $response->body);
+
+        $app = new App();
+        $app->setConfig('debug', 3);
+        $app->get('/boom', ThrowRuntimeCtrl::class, 'run');
+        $response = $app->handle(new Request(method: 'GET', path: '/boom'));
+        $this->assertSame(500, $response->status);
+        $this->assertStringContainsString('boom', $response->body);
+    }
+
+    public function testBeforeAndAfterRouteHooks(): void {
+        $app = new App();
+        $app->get('/hooks', HookCtrl::class, 'run');
+
+        $response = $app->handle(new Request(method: 'GET', path: '/hooks'));
+        $this->assertSame('after', $response->body);
+
+        $app = new App();
+        $app->get('/before', BeforeStopsCtrl::class, 'run');
+
+        $response = $app->handle(new Request(method: 'GET', path: '/before'));
+        $this->assertSame('before', $response->body);
+    }
+
+    public function testMissingActionHandledAs500(): void {
+        $app = new App();
+        $app->get('/x', HelloStub::class, 'missingAction');
+        $response = $app->handle(new Request(method: 'GET', path: '/x'));
+        $this->assertSame(500, $response->status);
+    }
+}
+
+class HelloStub {
+    public Request $request;
+
+    public function index(): Response {
+        return new Response('hello world');
+    }
+
+    public function greet(): Response {
+        return new Response('Hello ' . $this->request->param('name'));
+    }
+
+    public function submit(): Response {
+        return new Response('submitted');
+    }
+}
+
+class WildcardCtrl {
+    public function show(): Response {
+        return new Response('ok');
+    }
+}
+
+class ThrowHttpCtrl {
+    public function run(): Response {
+        throw HttpException::forbidden('blocked by test');
+    }
+}
+
+class ThrowRuntimeCtrl {
+    public function run(): Response {
+        throw new \RuntimeException('boom');
+    }
+}
+
+class HookCtrl {
+    public function beforeRoute(): void {
+    }
+
+    public function run(): Response {
+        return new Response('action');
+    }
+
+    public function afterRoute(): Response {
+        return new Response('after');
+    }
+}
+
+class BeforeStopsCtrl {
+    public function beforeRoute(): Response {
+        return new Response('before');
+    }
+
+    public function run(): Response {
+        return new Response('action');
+    }
+}

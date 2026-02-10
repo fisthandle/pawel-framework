@@ -1,0 +1,69 @@
+<?php
+declare(strict_types=1);
+
+namespace P1\Tests\Unit;
+
+use P1\Db;
+use P1\Session;
+use PHPUnit\Framework\TestCase;
+
+class SessionTest extends TestCase {
+    private Db $db;
+
+    protected function setUp(): void {
+        $_SERVER = [];
+        $this->db = new Db(['dsn' => 'sqlite::memory:']);
+        $this->db->exec('CREATE TABLE sessions (
+            session_id TEXT PRIMARY KEY,
+            data TEXT NOT NULL DEFAULT "",
+            ip TEXT NOT NULL DEFAULT "",
+            agent TEXT NOT NULL DEFAULT "",
+            stamp INTEGER NOT NULL DEFAULT 0
+        )');
+    }
+
+    public function testWriteAndRead(): void {
+        $session = new Session($this->db, advisory: false);
+        $session->write('sid1', 'test_data');
+        $this->assertSame('test_data', $session->read('sid1'));
+    }
+
+    public function testReadMissing(): void {
+        $session = new Session($this->db, advisory: false);
+        $this->assertSame('', $session->read('nonexistent'));
+    }
+
+    public function testDestroy(): void {
+        $session = new Session($this->db, advisory: false);
+        $session->write('sid1', 'data');
+        $session->destroy('sid1');
+        $this->assertSame('', $session->read('sid1'));
+    }
+
+    public function testGc(): void {
+        $session = new Session($this->db, advisory: false);
+        $this->db->exec(
+            'INSERT INTO sessions (session_id, data, stamp) VALUES (?, ?, ?)',
+            ['old', 'data', time() - 7200],
+        );
+        $session->write('new', 'data');
+
+        $cleaned = $session->gc(3600);
+        $this->assertSame(1, $cleaned);
+        $this->assertSame('data', $session->read('new'));
+    }
+
+    public function testAdvisoryModeOnSqliteStillWorks(): void {
+        $session = new Session($this->db, advisory: true);
+        $session->open('', 'PHPSESSID');
+        $session->write('sid1', 'x');
+        $this->assertSame('x', $session->read('sid1'));
+        $this->assertTrue($session->close());
+    }
+
+    public function testRegisterAndGcReturnType(): void {
+        $session = new Session($this->db, advisory: false);
+        $session->register();
+        $this->assertIsInt($session->gc(0));
+    }
+}
