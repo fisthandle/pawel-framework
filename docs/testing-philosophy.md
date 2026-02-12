@@ -19,7 +19,7 @@
 
 ## PFrame\Testing\TestCase
 
-Łączy 3 traity: DatabaseTransactions, DatabaseAssertions, ActingAs.
+Łączy 6 traitów: DatabaseTransactions, DatabaseAssertions, ActingAs, ResponseAssertions, FlashAssertions, SessionAssertions.
 **Wymaga** DB skonfigurowane w bootstrap.
 
 Projekty bez DB używają poszczególnych traitów na PHPUnit\TestCase.
@@ -47,6 +47,97 @@ Każdy test działa w transakcji. tearDown robi rollback — dane z testu nie pr
 
     $this->actingAs(['id' => 1, 'name' => 'Joe', 'role' => 'admin']);
     $this->actingAsGuest();
+
+## HTTP Testing
+
+    class UserTest extends \PFrame\Testing\TestCase {
+        use \PFrame\Testing\HttpTesting;
+
+        protected App $app;
+
+        protected function setUp(): void {
+            parent::setUp();
+            $this->app = new App();
+            // register routes...
+        }
+
+        public function testUserList(): void {
+            $this->get('/users');
+            $this->assertOk();
+            $this->assertSee('Users');
+        }
+
+        public function testCreateUser(): void {
+            $this->actingAs(['id' => 1, 'role' => 'admin']);
+            $this->post('/users', ['name' => 'Joe', 'email' => 'joe@x.com']);
+            $this->assertRedirectTo('/users');
+            $this->assertFlash('success', 'User created');
+            $this->assertDatabaseHas('users', ['email' => 'joe@x.com']);
+        }
+    }
+
+CSRF jest wstrzykiwany automatycznie do POST/PUT/PATCH/DELETE.
+Opt-out: `$this->withoutCsrf()->post(...)`.
+
+## Response assertions
+
+    $this->assertOk();                           // status 200
+    $this->assertNotFound();                     // status 404
+    $this->assertForbidden();                    // status 403
+    $this->assertUnauthorized();                 // status 401
+    $this->assertStatus(201);                    // exact status
+    $this->assertRedirect();                     // 3xx
+    $this->assertRedirectTo('/login');           // 3xx + Location header
+    $this->assertSee('Welcome');                 // body contains
+    $this->assertDontSee('Error');               // body does not contain
+    $this->assertJsonContains(['success' => true]);      // JSON subset match
+    $this->assertHeader('Content-Type', 'application/json');
+    $this->assertHeaderMissing('X-Debug');
+
+## Flash assertions
+
+    $this->assertFlash('success', 'Saved');      // type + text
+    $this->assertFlash('error');                 // type only
+    $this->assertNoFlash('error');               // no flash of type
+    $this->assertNoFlash();                      // no flash at all
+
+## Session assertions
+
+    $this->assertAuthenticated();                // $_SESSION['user'] set
+    $this->assertGuest();                        // $_SESSION['user'] empty
+    $this->assertSessionHas('locale', 'pl');     // key + value
+    $this->assertSessionHas('cart');             // key only
+    $this->assertSessionMissing('temp');         // key absent
+
+## RefreshDatabase
+
+Trait do automatycznego ładowania migracji z katalogu SQL. Raz per proces (nie per test).
+
+    class TestCase extends \PFrame\Testing\TestCase {
+        use \PFrame\Testing\RefreshDatabase;
+
+        protected function migrationPath(): string {
+            return __DIR__ . '/../db/migrations';
+        }
+
+        protected function setUp(): void {
+            $this->bootRefreshDatabase();  // przed parent::setUp() (przed begin())
+            parent::setUp();
+        }
+    }
+
+## Composable traity
+
+| Trait | Wymaga | W TestCase |
+|-------|--------|------------|
+| DatabaseTransactions | Base::db() | ✅ |
+| DatabaseAssertions | Base::db() | ✅ |
+| ActingAs | — | ✅ |
+| ResponseAssertions | $this->response | ✅ |
+| FlashAssertions | $_SESSION | ✅ |
+| SessionAssertions | $_SESSION | ✅ |
+| HttpTesting | $this->app (App) | ❌ (wymaga config) |
+| RefreshDatabase | Base::db() + migrationPath() | ❌ (wymaga config) |
 
 ## Factory methods (per projekt)
 
