@@ -891,6 +891,30 @@ namespace PFrame {
             return (int) $this->pdo->lastInsertId();
         }
 
+        /** @param array<int, string> $columns */
+        public function batchInsert(string $table, array $columns, array $rows, string $mode = 'INSERT'): void {
+            if ($rows === [] || $columns === []) {
+                return;
+            }
+
+            $colCount = count($columns);
+            $colList = implode(', ', $columns);
+            $rowPlaceholder = '(' . implode(',', array_fill(0, $colCount, '?')) . ')';
+            $maxParams = $this->pdo->getAttribute(\PDO::ATTR_DRIVER_NAME) === 'sqlite' ? 999 : 65535;
+            $chunkSize = max(1, (int) floor($maxParams / $colCount));
+
+            foreach (array_chunk($rows, $chunkSize) as $chunk) {
+                $placeholders = implode(',', array_fill(0, count($chunk), $rowPlaceholder));
+                $params = [];
+                foreach ($chunk as $row) {
+                    foreach ($row as $value) {
+                        $params[] = $value;
+                    }
+                }
+                $this->exec("$mode INTO $table ($colList) VALUES $placeholders", $params);
+            }
+        }
+
         public function begin(): bool {
             return $this->pdo->beginTransaction();
         }
@@ -1743,6 +1767,11 @@ namespace PFrame {
 
         public static function insertGetId(string $sql, array|string|null $params = null): int {
             return self::db()->insertGetId($sql, $params);
+        }
+
+        /** @param array<int, string> $columns */
+        public static function batchInsert(string $table, array $columns, array $rows, string $mode = 'INSERT'): void {
+            self::db()->batchInsert($table, $columns, $rows, $mode);
         }
 
         public static function flash(): Flash {

@@ -44,6 +44,9 @@ class BaseFacadeTest extends TestCase {
         $this->assertSame(['a', 'b'], Base::col('SELECT name FROM items ORDER BY id'));
         $this->assertCount(2, Base::results('SELECT * FROM items'));
         $this->assertInstanceOf(\PFrame\Flash::class, Base::flash());
+
+        Base::batchInsert('items', ['name'], [['c'], ['d']]);
+        $this->assertSame(4, Base::var('SELECT COUNT(*) FROM items'));
     }
 
     public function testUrlShortcut(): void {

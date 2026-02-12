@@ -162,4 +162,98 @@ class DbTest extends TestCase {
         $this->assertStringContainsString('SELECT 1', $log);
         $this->assertMatchesRegularExpression('/\(\d+\.\d+ms\)/', $log);
     }
+
+    public function testBatchInsertBasic(): void {
+        $this->db->batchInsert('users', ['name', 'email'], [
+            ['Zed', 'zed@x.com'],
+            ['Kai', 'kai@x.com'],
+        ]);
+        $this->assertSame(4, (int) $this->db->var('SELECT COUNT(*) FROM users'));
+        $this->assertSame('Zed', $this->db->var('SELECT name FROM users WHERE email = ?', 'zed@x.com'));
+    }
+
+    public function testBatchInsertEmptyRowsIsNoop(): void {
+        $this->db->batchInsert('users', ['name', 'email'], []);
+        $this->assertSame(2, (int) $this->db->var('SELECT COUNT(*) FROM users'));
+    }
+
+    public function testBatchInsertEmptyColumnsIsNoop(): void {
+        $this->db->batchInsert('users', [], [['Joe', 'j@x.com']]);
+        $this->assertSame(2, (int) $this->db->var('SELECT COUNT(*) FROM users'));
+    }
+
+    public function testBatchInsertChunksAtSqliteLimit(): void {
+        $db = new Db(['dsn' => 'sqlite::memory:', 'log_queries' => true]);
+        $db->exec('CREATE TABLE bulk (a INTEGER NOT NULL, b TEXT NOT NULL, c INTEGER NOT NULL)');
+
+        $rows = [];
+        for ($i = 1; $i <= 400; $i++) {
+            $rows[] = [$i, 'row-' . $i, $i * 10];
+        }
+
+        $db->batchInsert('bulk', ['a', 'b', 'c'], $rows);
+
+        $this->assertSame(400, (int) $db->var('SELECT COUNT(*) FROM bulk'));
+        $this->assertSame('row-1', $db->var('SELECT b FROM bulk WHERE a = ?', [1]));
+        $this->assertSame(4000, (int) $db->var('SELECT c FROM bulk WHERE a = ?', [400]));
+
+        $insertCount = 0;
+        foreach ($db->queryLog() as $entry) {
+            if (str_starts_with($entry['sql'], 'INSERT INTO bulk')) {
+                $insertCount++;
+            }
+        }
+        $this->assertSame(2, $insertCount);
+    }
+
+    public function testBatchInsertWithInsertOrIgnore(): void {
+        $this->db->exec('CREATE TABLE uniq (id INTEGER PRIMARY KEY, val TEXT)');
+        $this->db->exec('INSERT INTO uniq (id, val) VALUES (1, ?)', ['existing']);
+
+        $this->db->batchInsert('uniq', ['id', 'val'], [
+            [1, 'duplicate'],
+            [2, 'new'],
+        ], 'INSERT OR IGNORE');
+
+        $this->assertSame(2, (int) $this->db->var('SELECT COUNT(*) FROM uniq'));
+        $this->assertSame('existing', $this->db->var('SELECT val FROM uniq WHERE id = ?', [1]));
+        $this->assertSame('new', $this->db->var('SELECT val FROM uniq WHERE id = ?', [2]));
+    }
+
+    public function testBatchInsertWithReplace(): void {
+        $this->db->exec('CREATE TABLE rep (id INTEGER PRIMARY KEY, val TEXT)');
+        $this->db->exec('INSERT INTO rep (id, val) VALUES (1, ?)', ['old']);
+
+        $this->db->batchInsert('rep', ['id', 'val'], [
+            [1, 'new'],
+            [2, 'added'],
+        ], 'REPLACE');
+
+        $this->assertSame(2, (int) $this->db->var('SELECT COUNT(*) FROM rep'));
+        $this->assertSame('new', $this->db->var('SELECT val FROM rep WHERE id = ?', [1]));
+    }
+
+    public function testBatchInsertWithNullValues(): void {
+        $this->db->batchInsert('users', ['name', 'email'], [
+            ['Nil', null],
+        ]);
+        $this->assertSame(3, (int) $this->db->var('SELECT COUNT(*) FROM users'));
+        $this->assertNull($this->db->var('SELECT email FROM users WHERE name = ?', 'Nil'));
+    }
+
+    public function testBatchInsertSingleColumn(): void {
+        $this->db->exec('CREATE TABLE tags (name TEXT NOT NULL)');
+
+        $rows = array_map(fn($i) => ['tag-' . $i], range(1, 50));
+        $this->db->batchInsert('tags', ['name'], $rows);
+
+        $this->assertSame(50, (int) $this->db->var('SELECT COUNT(*) FROM tags'));
+    }
+
+    public function testBatchInsertRowTooLongThrows(): void {
+        $this->expectException(\PDOException::class);
+        $this->db->batchInsert('users', ['name', 'email'], [
+            ['Joe', 'j@x.com', 'extra'],
+        ]);
+    }
 }
