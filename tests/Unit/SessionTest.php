@@ -73,4 +73,14 @@ class SessionTest extends TestCase {
         $session->register(['secure' => false]);
         $this->assertFalse(session_get_cookie_params()['secure']);
     }
+
+    public function testSessionWriteWorksWithAdvisoryDisabled(): void {
+        $session = new Session($this->db, advisory: false);
+        $id = bin2hex(random_bytes(16));
+
+        $session->write($id, serialize(['test' => 'data']));
+        $data = $session->read($id);
+
+        $this->assertStringContainsString('test', $data);
+    }
 }

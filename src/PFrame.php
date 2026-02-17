@@ -206,6 +206,7 @@ namespace PFrame {
             public string $body = '',
             public int $status = 200,
             public array $headers = [],
+            public ?string $filePath = null,
         ) {
         }
 
@@ -239,10 +240,18 @@ namespace PFrame {
             return new static('', $status, ['Location' => $url]);
         }
 
+        public static function file(string $path, array $headers = [], int $status = 200): static {
+            return new static('', $status, $headers, $path);
+        }
+
         public function send(): void {
             http_response_code($this->status);
             foreach ($this->headers as $name => $value) {
                 header($name . ': ' . $value);
+            }
+            if ($this->filePath !== null) {
+                readfile($this->filePath);
+                return;
             }
             echo $this->body;
         }
@@ -284,8 +293,17 @@ namespace PFrame {
         /** @var array<int, array{methods: string[], pattern: string, regex: string, paramNames: string[], controller: string, action: string, middleware: array, name: ?string, ajax: bool}> */
         private array $routes = [];
 
+        /** @var array<string, array<int, int>> */
+        private array $routesByMethod = [];
+
+        /** @var array<string, array<string, array<int, int>>> */
+        private array $staticRoutesByMethod = [];
+
         /** @var array<string, int> */
         private array $namedRoutes = [];
+
+        /** @var array<string, array{invoke_without_args: bool, arg_types: array<int, string>}> */
+        private array $methodCallPlanCache = [];
 
         /** @var array<callable> */
         private array $middleware = [];
@@ -460,6 +478,17 @@ namespace PFrame {
             if ($name !== null) {
                 $this->namedRoutes[$name] = $index;
             }
+
+            foreach ($methodList as $method) {
+                $this->routesByMethod[$method][] = $index;
+            }
+
+            if (!str_contains($pattern, '{') && !str_contains($pattern, '*')) {
+                $normalizedPattern = $this->normalizeStaticPath($pattern);
+                foreach ($methodList as $method) {
+                    $this->staticRoutesByMethod[$method][$normalizedPattern][] = $index;
+                }
+            }
         }
 
         public function url(string $name, array $params = []): string {
@@ -544,24 +573,34 @@ namespace PFrame {
 
         private function matchRoute(string $method, string $path, bool $isAjax): ?array {
             $method = strtoupper($method);
-            $allowed = [];
-            foreach ($this->routes as $route) {
+            $normalizedPath = $this->normalizeStaticPath($path);
+
+            foreach ($this->staticRoutesByMethod[$method][$normalizedPath] ?? [] as $i) {
+                $route = $this->routes[$i];
+                if ($route['ajax'] && !$isAjax) {
+                    continue;
+                }
+
+                return [
+                    'controller' => $route['controller'],
+                    'action' => $route['action'],
+                    'params' => [],
+                    'middleware' => $route['middleware'],
+                ];
+            }
+
+            foreach ($this->routesByMethod[$method] ?? [] as $i) {
+                $route = $this->routes[$i];
                 if (!preg_match($route['regex'], $path, $matches)) {
                     continue;
                 }
                 if ($route['ajax'] && !$isAjax) {
                     continue;
                 }
-                if (!in_array($method, $route['methods'], true)) {
-                    foreach ($route['methods'] as $allowedMethod) {
-                        $allowed[$allowedMethod] = true;
-                    }
-                    continue;
-                }
 
                 $params = [];
-                foreach ($route['paramNames'] as $i => $name) {
-                    $params[$name] = $matches[$i + 1] ?? '';
+                foreach ($route['paramNames'] as $paramIndex => $name) {
+                    $params[$name] = $matches[$paramIndex + 1] ?? '';
                 }
 
                 return [
@@ -572,11 +611,72 @@ namespace PFrame {
                 ];
             }
 
+            $allowed = [];
+            foreach ($this->routes as $route) {
+                if (!preg_match($route['regex'], $path)) {
+                    continue;
+                }
+                if ($route['ajax'] && !$isAjax) {
+                    continue;
+                }
+
+                foreach ($route['methods'] as $allowedMethod) {
+                    $allowed[$allowedMethod] = true;
+                }
+            }
+
             if ($allowed !== []) {
                 throw HttpException::methodNotAllowed(array_keys($allowed));
             }
 
             return null;
+        }
+
+        /** @return array{invoke_without_args: bool, arg_types: array<int, string>} */
+        private function buildControllerMethodPlan(object $controller, string $method): array {
+            $ref = new \ReflectionMethod($controller, $method);
+            if ($ref->getNumberOfParameters() === 0) {
+                return ['invoke_without_args' => true, 'arg_types' => []];
+            }
+
+            $argTypes = [];
+            foreach ($ref->getParameters() as $param) {
+                $type = $param->getType();
+                if ($type instanceof \ReflectionNamedType) {
+                    $typeName = $type->getName();
+                    if ($typeName === Request::class || is_subclass_of($typeName, Request::class)) {
+                        $argTypes[] = 'request';
+                        continue;
+                    }
+                    if ($typeName === App::class || is_subclass_of($typeName, App::class)) {
+                        $argTypes[] = 'app';
+                        continue;
+                    }
+                }
+
+                $argTypes[] = 'null';
+            }
+
+            return ['invoke_without_args' => false, 'arg_types' => $argTypes];
+        }
+
+        private function callControllerMethod(object $controller, string $method, Request $request): mixed {
+            $key = get_class($controller) . '::' . $method;
+            $plan = $this->methodCallPlanCache[$key] ??= $this->buildControllerMethodPlan($controller, $method);
+            if ($plan['invoke_without_args']) {
+                return $controller->{$method}();
+            }
+
+            $args = [];
+            foreach ($plan['arg_types'] as $argType) {
+                $args[] = match ($argType) {
+                    'request' => $request,
+                    'app' => $this,
+                    default => null,
+                };
+            }
+
+            return $controller->{$method}(...$args);
         }
 
         private function invokeController(Request $request, string $controllerClass, string $action): Response {
@@ -587,7 +687,7 @@ namespace PFrame {
             }
 
             if (method_exists($controller, 'beforeRoute')) {
-                $hook = $controller->beforeRoute();
+                $hook = $this->callControllerMethod($controller, 'beforeRoute', $request);
                 if ($hook instanceof Response) {
                     return $hook;
                 }
@@ -597,10 +697,10 @@ namespace PFrame {
                 throw new \RuntimeException('Action not found: ' . $controllerClass . '::' . $action);
             }
 
-            $result = $controller->{$action}();
+            $result = $this->callControllerMethod($controller, $action, $request);
 
             if (method_exists($controller, 'afterRoute')) {
-                $hook = $controller->afterRoute();
+                $hook = $this->callControllerMethod($controller, 'afterRoute', $request);
                 if ($hook instanceof Response) {
                     return $hook;
                 }
@@ -692,6 +792,11 @@ namespace PFrame {
         /** @return array{prefix: string, middleware: array<callable>, name_prefix: string} */
         private function currentRouteGroup(): array {
             return $this->routeGroups[array_key_last($this->routeGroups)];
+        }
+
+        private function normalizeStaticPath(string $path): string {
+            $normalized = rtrim($path, '/');
+            return $normalized === '' ? '/' : $normalized;
         }
 
         private function joinRoutePath(string $prefix, string $path): string {
@@ -793,6 +898,7 @@ namespace PFrame {
 
         /** @var array<int, array{sql: string, time: float}> */
         private array $log = [];
+        private int $savepointLevel = 0;
         private bool $logQueries;
         private int $lastRowCount = 0;
 
@@ -932,14 +1038,33 @@ namespace PFrame {
         }
 
         public function begin(): bool {
+            if ($this->pdo->inTransaction()) {
+                $this->savepointLevel++;
+                $this->pdo->exec("SAVEPOINT sp_{$this->savepointLevel}");
+                return true;
+            }
+
+            $this->savepointLevel = 0;
             return $this->pdo->beginTransaction();
         }
 
         public function commit(): bool {
+            if ($this->savepointLevel > 0) {
+                $this->pdo->exec("RELEASE SAVEPOINT sp_{$this->savepointLevel}");
+                $this->savepointLevel--;
+                return true;
+            }
+
             return $this->pdo->commit();
         }
 
         public function rollback(): bool {
+            if ($this->savepointLevel > 0) {
+                $this->pdo->exec("ROLLBACK TO SAVEPOINT sp_{$this->savepointLevel}");
+                $this->savepointLevel--;
+                return true;
+            }
+
             return $this->pdo->rollBack();
         }
 
@@ -969,6 +1094,7 @@ namespace PFrame {
         public function resetRequestState(): void {
             $this->log = [];
             $this->lastRowCount = 0;
+            $this->savepointLevel = 0;
         }
 
         private function isSelectQuery(string $sql): bool {
@@ -1151,11 +1277,16 @@ namespace PFrame {
 
     class Session implements \SessionHandlerInterface {
         private ?string $lockName = null;
+        private bool $lockAcquired = false;
+        private readonly bool $useAdvisoryLock;
 
         public function __construct(
             private readonly Db $db,
             private readonly bool $advisory = true,
         ) {
+            $driver = (string) $this->db->pdo()->getAttribute(\PDO::ATTR_DRIVER_NAME);
+            $this->useAdvisoryLock = $this->advisory && $driver === 'mysql';
+            $this->lockAcquired = !$this->useAdvisoryLock;
         }
 
         public function register(array $cookieParams = []): void {
@@ -1197,7 +1328,7 @@ namespace PFrame {
         }
 
         public function read(string $id): string|false {
-            if ($this->advisory) {
+            if ($this->useAdvisoryLock) {
                 $this->acquireLock($id);
             }
 
@@ -1211,6 +1342,11 @@ namespace PFrame {
         }
 
         public function write(string $id, string $data): bool {
+            if (!$this->lockAcquired) {
+                $this->releaseLock();
+                return true;
+            }
+
             try {
                 $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
                 $agent = substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 5000);
@@ -1252,12 +1388,33 @@ namespace PFrame {
         }
 
         private function acquireLock(string $id): void {
+            if (!$this->useAdvisoryLock) {
+                $this->lockAcquired = true;
+                return;
+            }
+
             $this->lockName = 'sess_' . substr($id, 0, 32);
+            $this->lockAcquired = false;
+
             try {
                 if ($this->db->pdo()->inTransaction()) {
                     $this->db->pdo()->rollBack();
                 }
-                $this->db->var('SELECT GET_LOCK(?, 10)', [$this->lockName]);
+
+                $result = $this->db->var('SELECT GET_LOCK(?, 10)', [$this->lockName]);
+                if ((int) $result === 1) {
+                    $this->lockAcquired = true;
+                    return;
+                }
+
+                $result = $this->db->var('SELECT GET_LOCK(?, 20)', [$this->lockName]);
+                if ((int) $result === 1) {
+                    $this->lockAcquired = true;
+                    return;
+                }
+
+                error_log('[SESSION] Advisory lock timeout for ' . $this->lockName);
+                $this->lockName = null;
             } catch (\Throwable) {
                 $this->lockName = null;
             }
@@ -1265,6 +1422,7 @@ namespace PFrame {
 
         private function releaseLock(): void {
             if ($this->lockName === null) {
+                $this->lockAcquired = !$this->useAdvisoryLock;
                 return;
             }
 
@@ -1275,6 +1433,7 @@ namespace PFrame {
             }
 
             $this->lockName = null;
+            $this->lockAcquired = !$this->useAdvisoryLock;
         }
     }
 

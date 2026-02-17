@@ -96,6 +96,42 @@ class DbTest extends TestCase {
         $this->assertEquals(3, $this->db->var('SELECT COUNT(*) FROM users'));
     }
 
+    public function testNestedBeginCreatesSavepoint(): void {
+        $this->db->exec('CREATE TABLE IF NOT EXISTS sp_test (id INTEGER PRIMARY KEY, val TEXT)');
+        $this->db->begin();
+        $this->db->exec('INSERT INTO sp_test (id, val) VALUES (1, ?)', ['outer']);
+        $this->db->begin();
+        $this->db->exec('INSERT INTO sp_test (id, val) VALUES (2, ?)', ['inner']);
+        $this->db->rollback();
+        $this->db->commit();
+
+        $rows = $this->db->results('SELECT * FROM sp_test ORDER BY id');
+        $this->assertCount(1, $rows);
+        $this->assertSame('outer', $rows[0]['val']);
+    }
+
+    public function testNestedCommitReleasesSavepoint(): void {
+        $this->db->exec('CREATE TABLE IF NOT EXISTS sp_test2 (id INTEGER PRIMARY KEY, val TEXT)');
+        $this->db->begin();
+        $this->db->exec('INSERT INTO sp_test2 (id, val) VALUES (1, ?)', ['outer']);
+        $this->db->begin();
+        $this->db->exec('INSERT INTO sp_test2 (id, val) VALUES (2, ?)', ['inner']);
+        $this->db->commit();
+        $this->db->commit();
+
+        $rows = $this->db->results('SELECT * FROM sp_test2 ORDER BY id');
+        $this->assertCount(2, $rows);
+    }
+
+    public function testSavepointLevelResetsOnOuterRollback(): void {
+        $this->db->begin();
+        $this->db->begin();
+        $this->db->rollback();
+        $this->db->rollback();
+
+        $this->assertFalse($this->db->trans());
+    }
+
     public function testTransReturnsFalseOutsideTransaction(): void {
         $this->assertFalse($this->db->trans());
     }

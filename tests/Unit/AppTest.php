@@ -27,6 +27,15 @@ class AppTest extends TestCase {
         $this->assertSame('Hello Joe', $response->body);
     }
 
+    public function testStaticRouteMatchesWithTrailingSlash(): void {
+        $app = new App();
+        $app->get('/about/', StaticRouteStub::class, 'index');
+
+        $response = $app->handle(new Request(method: 'GET', path: '/about'));
+        $this->assertSame(200, $response->status);
+        $this->assertSame('about', $response->body);
+    }
+
     public function test404(): void {
         $app = new App();
         $response = $app->handle(new Request(method: 'GET', path: '/nope'));
@@ -295,6 +304,30 @@ class AppTest extends TestCase {
         $this->assertSame('before', $response->body);
     }
 
+    public function testControllerMethodReceivesRequest(): void {
+        $app = new App();
+        $app->get('/di-test', DIRequestStub::class, 'withRequest');
+
+        $response = $app->handle(new Request(method: 'GET', path: '/di-test'));
+        $this->assertSame('GET', $response->body);
+    }
+
+    public function testControllerMethodReceivesApp(): void {
+        $app = new App();
+        $app->get('/di-app', DIAppStub::class, 'withApp');
+
+        $response = $app->handle(new Request(method: 'GET', path: '/di-app'));
+        $this->assertSame('has_app', $response->body);
+    }
+
+    public function testControllerMethodNoArgsStillWorks(): void {
+        $app = new App();
+        $app->get('/hello', HelloStub::class, 'index');
+
+        $response = $app->handle(new Request(method: 'GET', path: '/hello'));
+        $this->assertSame('hello world', $response->body);
+    }
+
     public function testElapsedTime(): void {
         $app = new App();
         usleep(5000); // 5ms
@@ -378,6 +411,14 @@ class WildcardCtrl {
     }
 }
 
+class StaticRouteStub {
+    public Request $request;
+
+    public function index(): Response {
+        return new Response('about');
+    }
+}
+
 class ThrowHttpCtrl {
     public function run(): Response {
         throw HttpException::forbidden('blocked by test');
@@ -412,6 +453,22 @@ class HookCtrl {
 
     public function afterRoute(): Response {
         return new Response('after');
+    }
+}
+
+class DIRequestStub {
+    public Request $request;
+
+    public function withRequest(Request $request): Response {
+        return new Response($request->method);
+    }
+}
+
+class DIAppStub {
+    public Request $request;
+
+    public function withApp(App $app): Response {
+        return new Response('has_app');
     }
 }
 

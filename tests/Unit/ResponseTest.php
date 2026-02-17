@@ -65,4 +65,31 @@ class ResponseTest extends TestCase {
         $this->assertTrue($method->hasReturnType());
         $this->assertSame('never', (string) $method->getReturnType());
     }
+
+    public function testFileFactoryCreatesResponseWithFilePath(): void {
+        $response = Response::file('/tmp/test.txt', ['Content-Type' => 'text/plain']);
+        $this->assertSame(200, $response->status);
+        $this->assertSame('/tmp/test.txt', $response->filePath);
+        $this->assertSame('text/plain', $response->headers['Content-Type']);
+        $this->assertSame('', $response->body);
+    }
+
+    public function testFileFactoryWithCustomStatus(): void {
+        $response = Response::file('/tmp/test.txt', [], 206);
+        $this->assertSame(206, $response->status);
+    }
+
+    public function testFileSendOutputsFileContent(): void {
+        $tmpFile = tempnam(sys_get_temp_dir(), 'pframe_test_');
+        $this->assertNotFalse($tmpFile);
+        file_put_contents($tmpFile, 'file content here');
+
+        $response = Response::file($tmpFile);
+        ob_start();
+        $response->send();
+        $output = (string) ob_get_clean();
+        $this->assertSame('file content here', $output);
+
+        unlink($tmpFile);
+    }
 }
